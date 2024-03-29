@@ -126,8 +126,11 @@ class LLMEngine:
         args = (seq_len, bs, prefill)
         if prefill:
             if seq_len * bs > self.scheduler_config.max_num_batched_tokens:
+                print(f"[Error-Prefill] #tokens = {seq_len * bs}, which is larger than max = "
+                      f"{self.scheduler_config.max_num_batched_tokens}!")
                 profiled = [-1]
             elif bs > self.scheduler_config.max_num_seqs:
+                print(f"[Error-Prefill] #requests = {bs}, which is larger than max = {self.scheduler_config.max_num_seqs}")
                 profiled = [-1]
             else:
                 # Yixuan: now _run_workers is in model_executor
@@ -139,11 +142,17 @@ class LLMEngine:
             num_blocks = self.scheduler.block_manager.num_total_gpu_blocks
             args = (seq_len, bs, False)
             if bs > self.scheduler_config.max_num_seqs:
+                print(f"[Error-Decode] #requests = {bs}, which is larger than max = "
+                      f"{self.scheduler_config.max_num_seqs}")
                 profiled = [-1]
             elif seq_len > self.scheduler_config.max_num_batched_tokens:
+                print(f"[Error-Decode] #tokens = {seq_len}, which is larger than max = "
+                      f"{self.scheduler_config.max_num_batched_tokens}!")
                 profiled = [-1]
             elif math.ceil(seq_len / block_size) * bs > num_blocks:
                 # No enough memory to store all intermediates.
+                print(f"[Error-Decode] No enough blocks! (require: {math.ceil(seq_len / block_size) * bs}, "
+                      f"available {num_blocks})")
                 profiled = [-1]
             else:
                 # Yixuan: now _run_workers is in model_executor
