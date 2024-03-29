@@ -74,8 +74,8 @@ class Worker:
                                  seq_len: int,
                                  batch_size: int,
                                  is_prompt: bool,
-                                 warmup: int = 1,
-                                 num_iter: int = 10) -> float:
+                                 warmup: int = 20,
+                                 num_iter: int = 50) -> float:
         # Profile the execution time of certain number of requests and sequence
         # length.
         import time
