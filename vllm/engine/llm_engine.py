@@ -120,6 +120,38 @@ class LLMEngine:
                 labels=dict(model_name=model_config.model))
             self.stat_logger.info("cache_config", self.cache_config)
 
+    def _profile_single_point(self, seq_len, bs, prefill):
+        import math
+        # prefill
+        args = (seq_len, bs, prefill)
+        if prefill:
+            if seq_len * bs > self.scheduler_config.max_num_batched_tokens:
+                profiled = [-1]
+            elif bs > self.scheduler_config.max_num_seqs:
+                profiled = [-1]
+            else:
+                # Yixuan: now _run_workers is in model_executor
+                profiled = self.model_executor._run_workers("profile_single_iteration",
+                                                            *args)
+        # decode
+        else:
+            block_size = self.scheduler.block_manager.block_size
+            num_blocks = self.scheduler.block_manager.num_total_gpu_blocks
+            args = (seq_len, bs, False)
+            if bs > self.scheduler_config.max_num_seqs:
+                profiled = [-1]
+            elif seq_len > self.scheduler_config.max_num_batched_tokens:
+                profiled = [-1]
+            elif math.ceil(seq_len / block_size) * bs > num_blocks:
+                # No enough memory to store all intermediates.
+                profiled = [-1]
+            else:
+                # Yixuan: now _run_workers is in model_executor
+                profiled = self.model_executor._run_workers("profile_single_iteration",
+                                                            *args)
+        result = max(profiled)
+        return result
+
     @classmethod
     def from_engine_args(cls, engine_args: EngineArgs) -> "LLMEngine":
         """Creates an LLM engine from the engine arguments."""

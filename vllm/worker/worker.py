@@ -19,6 +19,7 @@ from vllm.sequence import SamplerOutput, SequenceGroupMetadata
 from vllm.worker.cache_engine import CacheEngine
 from vllm.worker.model_runner import ModelRunner
 from vllm.lora.request import LoRARequest
+from vllm.sequence import SamplingParams, SequenceData
 
 
 class Worker:
@@ -66,6 +67,78 @@ class Worker:
         self.cache_config = None
         self.cache_engine = None
         self.gpu_cache = None
+
+
+    @torch.inference_mode()
+    def profile_single_iteration(self,
+                                 seq_len: int,
+                                 batch_size: int,
+                                 is_prompt: bool,
+                                 warmup: int = 1,
+                                 num_iter: int = 10) -> float:
+        # Profile the execution time of certain number of requests and sequence
+        # length.
+        import time
+        import random
+
+        # Enable top-k sampling to reflect the accurate memory usage.
+        # Yixuan: add to model_runner
+        vocab_size = self.model_runner.model.config.vocab_size
+        sampling_params = SamplingParams(top_p=0.99, top_k=vocab_size - 1)
+        seqs = []
+        num_blocks = self.gpu_cache[0][0].shape[0]
+        for group_id in range(batch_size):
+            seq_data = SequenceData([0] * seq_len)
+            block_table = [
+                random.randint(0, num_blocks - 1)
+                # Yixuan: add to model_runner
+                for _ in range(seq_len // self.model_runner.block_size + 1)
+            ]
+            seq = SequenceGroupMetadata(
+                request_id=str(group_id),
+                is_prompt=is_prompt,
+                seq_data={group_id: seq_data},
+                sampling_params=sampling_params,
+                block_tables={group_id: block_table},
+            )
+            seqs.append(seq)
+
+        try:
+            # Yixuan: changed
+            input_tokens, input_positions, input_metadata, _, _, _ = self.model_runner.prepare_input_tensors(seqs)
+
+            # Execute the model.
+            for _ in range(warmup):
+                # Yixuan: add to model_runner
+                self.model_runner.model(
+                    input_ids=input_tokens,
+                    positions=input_positions,
+                    kv_caches=self.gpu_cache,
+                    input_metadata=input_metadata,
+                )
+            torch.cuda.synchronize()
+            tic = time.time()
+            for _ in range(num_iter):
+                # Yixuan: add to model_runner
+                # self.model_runner.execute_model_for_test(
+                #     input_tuple=prepared_inputs,
+                #     kv_caches=self.gpu_cache
+                # )
+                self.model_runner.model(
+                    input_ids=input_tokens,
+                    positions=input_positions,
+                    kv_caches=self.gpu_cache,
+                    input_metadata=input_metadata,
+                )
+            torch.cuda.synchronize()
+            toc = time.time()
+        except RuntimeError:
+            return -1
+
+        # Calculate the number of blocks that can be allocated with the
+        # profiled peak memory.
+        set_random_seed(self.model_config.seed)
+        return (toc - tic) / num_iter
 
     def init_device(self, cupy_port: Optional[int] = None) -> None:
         if self.device_config.device.type == "cuda":

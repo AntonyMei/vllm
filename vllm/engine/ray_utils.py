@@ -33,6 +33,7 @@ try:
             return getattr(self.worker, name)
 
         def execute_method(self, method, *args, **kwargs):
+            # Yixuan: Jump to here from ray_gpu_executor
             try:
                 executor = getattr(self, method)
                 return executor(*args, **kwargs)
@@ -44,6 +45,9 @@ try:
                        "This might cause deadlock in distributed execution.")
                 logger.exception(msg)
                 raise e
+
+        def profile_single_iteration(self, *args, **kwargs):
+            self.worker.profile_single_iteration(*args, **kwargs)
 
         def get_node_ip(self) -> str:
             return get_ip()

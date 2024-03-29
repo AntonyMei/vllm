@@ -86,6 +86,7 @@ class ModelRunner:
         self.kv_cache_dtype = kv_cache_dtype
 
     def load_model(self) -> None:
+        # TODO: How to change this
         with CudaMemoryProfiler() as m:
             self.model = get_model(self.model_config,
                                    self.device_config,
