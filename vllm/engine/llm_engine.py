@@ -158,7 +158,7 @@ class LLMEngine:
                 # Yixuan: now _run_workers is in model_executor
                 profiled = self.model_executor._run_workers("profile_single_iteration",
                                                             *args)
-        result = max(profiled)
+        result = profiled
         return result
 
     @classmethod
